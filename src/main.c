@@ -8,17 +8,19 @@
 
 int larghezza_menu = 15;
 
-char titleScreen[Altezza][Larghezza + 10] = {
-    "  ____       _                   _____                _    ",
-    " |  _ |     (_)                 |  __ |              | |   ",
-    " | |_) |_ __ _ ___  ___  _ __   | |__) | __ ___  __ _| | __",
-    " |  _ <| '__| / __|/ _ || '_ |  |  ___/ '__/ _ |/ _` | |/ /",
-    " | |_) | |  | |__ | (_) | | | | | |   | | |  __/ (_| |   < ",
-    " |____/|_|  |_|___/|___/|_| |_| |_|   |_|  |___||__,_|_||_| "
+char titleScreen[8][Larghezza + 1] = {
+    "   _____      _           _     _____             ",
+    "  / ____|    | |         | |   |  __ \\            ",
+    " | |     ___ | |__   ___ | |_  | |__) |___  _ __  ",
+    " | |    / _ \\| '_ \\ / _ \\| __| |  _  // _ \\| '_ \\ ",
+    " | |___| (_) | |_) | (_) | |_  | | \\ \\ (_) | |_) |",
+    "  \\_____\\___/|_.__/ \\___/ \\__| |_|  \\_\\___/| .__/ ",
+    "                                           | |    ",
+    "                                           |_|    "
 };
 void draw_title() {
     for (int i = 0; i < Altezza; i++) {
-        mvprintw(10 + i, 77 , titleScreen[i]);
+        mvprintw(10 + i, 67 , titleScreen[i]);
     }
 }
 
@@ -32,8 +34,7 @@ void Comandi() {
      refresh();
      attron(COLOR_PAIR(1)); // Assicurati che il testo sia visibile sullo sfondo bianco
      mvprintw(18, (COLS - 15) / 2, "--- Comandi ---"); // Centra il titolo
-     mvprintw(20, (COLS - 30) / 2, "Usa le frecce per il movimento."); // Centra i nomi
-     mvprintw(22, (COLS - 45) / 2, "Per il resto, sta a te decidere il tuo fato."); // Istruzione per l'utente
+     mvprintw(20, (COLS - 30) / 2, "E' una simlazione fratello"); // Centra i nomi
      attroff(COLOR_PAIR(1));
      getch(); // Attendi la pressione di un tasto
      clear();  // Pulisci lo schermo prima di tornare al menu
@@ -45,9 +46,8 @@ int Crediti() {
      refresh();
      attron(COLOR_PAIR(1)); // Assicurati che il testo sia visibile sullo sfondo bianco
      mvprintw(18, (COLS - 15) / 2, "--- Crediti ---"); // Centra il titolo
-     mvprintw(20, (COLS - 16) / 2, "Brison Preak by:"); // Centra i nomi
-     mvprintw(22, (COLS - 40) / 2, "Giulia Pelli, Andrea Mazzoli, Daniele Matranga.");
-     mvprintw(24, (COLS - 41) / 2, "Ringraziamo il nostro beta tester Alessio Mondo.");
+     mvprintw(20, (COLS - 14) / 2, "Cobot Rop by:"); // Centra i nomi
+     mvprintw(22, (COLS - 30) / 2, "Andrea Mazzoli e Daniele Matranga.");
      mvprintw(26, (COLS - 30) / 2, "Premi un tasto per tornare al menu."); // Istruzione per l'utente
      attroff(COLOR_PAIR(1));
      getch(); // Attendi la pressione di un tasto
