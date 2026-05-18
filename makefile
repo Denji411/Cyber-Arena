@@ -1,24 +1,52 @@
-.PHONY = all clean
+# ──────────────────────────────────────────────────────────────
+#  Makefile – CobotRop  (C-2026 Extreme Edition)
+#  Dipendenze: gcc, ncurses, pthreads, ZeroMQ (libzmq)
+#
+#  Installazione dipendenze su Debian/Ubuntu:
+#    sudo apt install libncurses-dev libzmq3-dev
+#  Su Arch:
+#    sudo pacman -S ncurses zeromq
+# ──────────────────────────────────────────────────────────────
 
-CC     = gcc
-CFLAGS = -Wall -Iinclude
+.PHONY: all clean run
 
-all: main produttore consumatore globals programma
+CC      = gcc
+CFLAGS  = -Wall -Wextra -std=c11 -Iinclude
+# -lncurses  → ncurses
+# -lpthread  → POSIX thread
+# -lzmq      → ZeroMQ
+# -lm        → math (abs, sqrt...)
+LDFLAGS = -lncurses -lpthread -lzmq -lm
 
-main: src/main.c
-	$(CC) -c src/main.c $(CFLAGS) -o build/main.o
+# Sorgenti e oggetti
+SRCS = src/main.c    \
+       src/robot.c   \
+       src/grafica.c \
+       src/eventi.c  \
+       src/globals.c
 
-produttore: src/produttore.c
-	$(CC) -c src/produttore.c $(CFLAGS) -o build/produttore.o
+OBJS = $(patsubst src/%.c, build/%.o, $(SRCS))
 
-consumatore: src/consumatore.c
-	$(CC) -c src/consumatore.c $(CFLAGS) -o build/consumatore.o
+TARGET = bin/cobot_rop
 
-globals: src/globals.c
-	$(CC) -c src/globals.c $(CFLAGS) -o build/globals.o
+# ── Regola principale ──────────────────────────────────────────
+all: dirs $(TARGET)
 
-programma:
-	$(CC) build/*.o -o bin/programma
+$(TARGET): $(OBJS)
+	$(CC) $(OBJS) -o $@ $(LDFLAGS)
 
+# Compila ogni .c in un .o dentro build/
+build/%.o: src/%.c
+	$(CC) $(CFLAGS) -c $< -o $@
+
+# Crea le directory se non esistono
+dirs:
+	@mkdir -p bin build
+
+# ── Esecuzione rapida ──────────────────────────────────────────
+run: all
+	./$(TARGET)
+
+# ── Pulizia ───────────────────────────────────────────────────
 clean:
-	rm -f build/*.o bin/programma
+	rm -f build/*.o $(TARGET)
