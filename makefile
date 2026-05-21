@@ -16,7 +16,7 @@ CFLAGS  = -Wall -Wextra -std=c11 -Iinclude
 # -lpthread  → POSIX thread
 # -lzmq      → ZeroMQ
 # -lm        → math (abs, sqrt...)
-LDFLAGS = -lncurses -lpthread -lzmq -lm
+LDFLAGS = -lncurses -lpthread -lm
 
 # Sorgenti e oggetti
 SRCS = src/main.c    \

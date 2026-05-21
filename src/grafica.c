@@ -5,8 +5,8 @@
  * grafica.c
  * Thread grafico: aggiorna la schermata ncurses 10 volte al secondo.
  *
- * Usa una socket ZeroMQ SUB per ricevere messaggi evento dagli altri thread
- * (robot, eventi speciali) e li mostra in un riquadro dedicato in basso.
+ * Legge stato->ultimo_evento (protetto da mtx_evento) per mostrare
+ * i messaggi degli altri thread (robot, eventi speciali).
  *
  * Layout del terminale:
  *   ┌──────────────────────────────────────────────────┐ ┌───────────────┐
@@ -15,13 +15,12 @@
  *   │                                                  │ │  P: ██   45   │
  *   │                                                  │ │  ...          │
  *   └──────────────────────────────────────────────────┘ └───────────────┘
- *   [ EVENTO: ☠️ Aggressore ha distrutto Prudente!                        ]
+ *   [ EVENTO: Aggressore ha distrutto Prudente!                           ]
  */
 
 #include <ncurses.h>
 #include <string.h>
 #include <unistd.h>
-#include <zmq.h>
 
 #include "globals.h"
 #include "grafica.h"
@@ -90,7 +89,6 @@ void disegna_mappa(StatoGioco *stato) {
             char ch = stato->mappa[r][c];
             int  cp = CP_BORDO;
 
-            /* Sceglie il colore in base al contenuto della cella */
             if (ch == CELLA_BORDO || ch == CELLA_OSTACOLO) {
                 cp = CP_BORDO;
             } else if (ch == CELLA_MINA) {
@@ -100,7 +98,6 @@ void disegna_mappa(StatoGioco *stato) {
             } else if (ch == CELLA_SCUDO) {
                 cp = CP_SCUDO;
             } else {
-                /* Potrebbe essere il simbolo di un robot */
                 for (int i = 0; i < stato->num_robot; i++) {
                     if (stato->robot[i].vivo && stato->robot[i].simbolo == ch) {
                         cp = colore_robot(ch);
@@ -122,9 +119,9 @@ void disegna_classifica(StatoGioco *stato) {
     int col = COL_CLASS;
 
     attron(COLOR_PAIR(CP_BORDO) | A_BOLD);
-    mvprintw(0, col, "╔══════════════╗");
-    mvprintw(1, col, "║  CLASSIFICA  ║");
-    mvprintw(2, col, "╠══════════════╣");
+    mvprintw(0, col, ".______________.");
+    mvprintw(1, col, "|  CLASSIFICA  |");
+    mvprintw(2, col, "|______________|");
     attroff(COLOR_PAIR(CP_BORDO) | A_BOLD);
 
     sem_wait(&sem_mappa);
@@ -132,41 +129,38 @@ void disegna_classifica(StatoGioco *stato) {
         Robot *r = &stato->robot[i];
         int riga = 3 + i * 3;
 
-        /* Nome e simbolo */
         int cp_robot = colore_robot(r->simbolo);
         attron(COLOR_PAIR(cp_robot) | A_BOLD);
-        mvprintw(riga, col, "║ %c %-10s ║", r->simbolo,
+        mvprintw(riga, col, "| %c %-10s |", r->simbolo,
                  r->vivo ? NOMI_ROBOT[i] : "DISTRUTTO ");
         attroff(COLOR_PAIR(cp_robot) | A_BOLD);
 
-        /* Barra HP */
         if (r->vivo) {
-            int barre = r->hp / 10; /* max 10 barre */
+            int barre = r->hp / 10;
             attron(COLOR_PAIR(colore_hp(r->hp)));
-            mvprintw(riga + 1, col, "║ HP:");
+            mvprintw(riga + 1, col, "| HP:");
             for (int b = 0; b < 10; b++) {
                 addch(b < barre ? '#' : '.');
             }
-            printw(" %-3d ║", r->hp);
+            printw(" %-3d |", r->hp);
             attroff(COLOR_PAIR(colore_hp(r->hp)));
 
-            /* Scudo */
             if (r->scudo > 0) {
                 attron(COLOR_PAIR(CP_SCUDO));
-                mvprintw(riga + 2, col, "║  [SCUDO x%d]   ║", r->scudo);
+                mvprintw(riga + 2, col, "|  [SCUDO x%d]   |", r->scudo);
                 attroff(COLOR_PAIR(CP_SCUDO));
             } else {
-                mvprintw(riga + 2, col, "╠══════════════╣");
+                mvprintw(riga + 2, col, "|______________|");
             }
         } else {
-            mvprintw(riga + 1, col, "║              ║");
-            mvprintw(riga + 2, col, "╠══════════════╣");
+            mvprintw(riga + 1, col, "|              |");
+            mvprintw(riga + 2, col, "|______________|");
         }
     }
     sem_post(&sem_mappa);
 
     int riga_fine = 3 + stato->num_robot * 3;
-    mvprintw(riga_fine, col, "╚══════════════╝");
+    mvprintw(riga_fine, col, "|______________|");
 }
 
 void disegna_eventi(const char *messaggio) {
@@ -183,14 +177,9 @@ void disegna_eventi(const char *messaggio) {
  * Thread grafico
  * ───────────────────────────────────────────── */
 
-void *thread_grafico(void *arg) {
+ void *thread_grafico(void *arg) {
     ArgGrafica *args  = (ArgGrafica *)arg;
     StatoGioco *stato = args->stato;
-    void       *sock  = args->zmq_socket;
-
-    /* Imposta la socket ZMQ in modalità non bloccante */
-    int timeout = 0;
-    zmq_setsockopt(sock, ZMQ_RCVTIMEO, &timeout, sizeof(timeout));
 
     while (!stato->partita_finita) {
         /* Permette uscita anticipata con il tasto 'q' */
@@ -201,24 +190,13 @@ void *thread_grafico(void *arg) {
             break;
         }
 
-        /* 1. Ricevi eventuali messaggi ZMQ (non bloccante) */
-        char buf[256] = {0};
-        int  n = zmq_recv(sock, buf, sizeof(buf) - 1, ZMQ_NOBLOCK);
-        if (n > 0) {
-            buf[n] = '\0';
-            pthread_mutex_lock(&mtx_evento);
-            strncpy(stato->ultimo_evento, buf, sizeof(stato->ultimo_evento) - 1);
-            pthread_mutex_unlock(&mtx_evento);
-        }
-
-        /* 2. Ridisegna */
+        /* Ridisegna */
         erase();
         disegna_mappa(stato);
         disegna_classifica(stato);
 
-        pthread_mutex_lock(&mtx_evento);
+        /* Chiamata pulita: il mutex viene preso direttamente dentro la funzione */
         disegna_eventi(stato->ultimo_evento);
-        pthread_mutex_unlock(&mtx_evento);
 
         refresh();
 
@@ -234,7 +212,7 @@ void *thread_grafico(void *arg) {
     attron(COLOR_PAIR(CP_HP_OK) | A_BOLD);
     if (stato->vincitore >= 0) {
         mvprintw(RIGA_EVENTO, 0,
-                 "🏆  VINCITORE: %s (%c)  —  Premi un tasto per uscire.",
+                 "VINCITORE: %s (%c)  --  Premi un tasto per uscire.",
                  NOMI_ROBOT[stato->vincitore],
                  SIMBOLI_ROBOT[stato->vincitore]);
     } else {
@@ -243,7 +221,7 @@ void *thread_grafico(void *arg) {
     attroff(COLOR_PAIR(CP_HP_OK) | A_BOLD);
 
     refresh();
-    nodelay(stdscr, FALSE);  /* ripristina getch bloccante */
+    nodelay(stdscr, FALSE);
     getch();
 
     return NULL;

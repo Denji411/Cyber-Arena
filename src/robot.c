@@ -9,8 +9,7 @@
  * sono protetti dal semaforo sem_mappa: ogni accesso in scrittura (muovi,
  * attacca, piazza mina) fa una sem_wait prima e una sem_post dopo.
  *
- * Gli eventi significativi (kill, danno, power-up) vengono pubblicati
- * sulla socket ZeroMQ PUB, che il thread grafico riceve via SUB.
+ * Gli eventi vengono scritti in stato->ultimo_evento (protetto da mtx_evento).
  */
 
 #include <stdio.h>
@@ -19,7 +18,6 @@
 #include <unistd.h>
 #include <math.h>
 #include <semaphore.h>
-#include <zmq.h>
 
 #include "globals.h"
 #include "robot.h"
@@ -49,11 +47,6 @@ int radar_prossimita(StatoGioco *stato, int id) {
     return bersaglio;
 }
 
-/* Pubblica un messaggio sulla socket ZMQ PUB */
-void pubblica_evento(void *zmq_socket, const char *messaggio) {
-    zmq_send(zmq_socket, messaggio, strlen(messaggio), ZMQ_NOBLOCK);
-}
-
 /* ─────────────────────────────────────────────
  * Azioni atomiche (sem_mappa acquisito internamente)
  * ───────────────────────────────────────────── */
@@ -65,7 +58,7 @@ bool muovi(StatoGioco *stato, int id, int dx, int dy) {
 
     sem_wait(&sem_mappa);
 
-    /* Controlla che la cella di destinazione sia entro i bordi e libera */
+    /* Controlla bordi */
     if (nx <= 0 || nx >= RIGHE - 1 || ny <= 0 || ny >= COLONNE - 1) {
         sem_post(&sem_mappa);
         return false;
@@ -90,7 +83,7 @@ bool muovi(StatoGioco *stato, int id, int dx, int dy) {
         r->hp -= DANNO_MINA;
         stato->mappa[nx][ny] = CELLA_LIBERA;
         char msg[128];
-        snprintf(msg, sizeof(msg), "💥 %s ha colpito una mina! -%d HP",
+        snprintf(msg, sizeof(msg), "%s ha colpito una mina! -%d HP",
                  NOMI_ROBOT[id], DANNO_MINA);
         pthread_mutex_lock(&mtx_evento);
         strncpy(stato->ultimo_evento, msg, sizeof(stato->ultimo_evento) - 1);
@@ -134,11 +127,9 @@ bool attacca(StatoGioco *stato, int id) {
     for (int dir = 0; dir < 4; dir++) {
         int nx = r->x + dx[dir];
         int ny = r->y + dy[dir];
-        /* Cerca un robot nemico in quella cella */
         for (int i = 0; i < stato->num_robot; i++) {
             if (i == id || !stato->robot[i].vivo) continue;
             if (stato->robot[i].x == nx && stato->robot[i].y == ny) {
-                /* Attacco trovato */
                 int danno = (r->tipo == KAMIKAZE) ? DANNO_ATTACCO * 2 : DANNO_ATTACCO;
                 if (stato->robot[i].scudo > 0) {
                     stato->robot[i].scudo--;
@@ -152,10 +143,10 @@ bool attacca(StatoGioco *stato, int id) {
                     stato->robot[i].hp = 0;
                     stato->robot[i].vivo = false;
                     stato->mappa[nx][ny] = CELLA_LIBERA;
-                    snprintf(msg, sizeof(msg), "☠️  %s ha distrutto %s!",
+                    snprintf(msg, sizeof(msg), "%s ha distrutto %s!",
                              NOMI_ROBOT[id], NOMI_ROBOT[i]);
                 } else {
-                    snprintf(msg, sizeof(msg), "⚔️  %s attacca %s (-%d HP)",
+                    snprintf(msg, sizeof(msg), "%s attacca %s (-%d HP)",
                              NOMI_ROBOT[id], NOMI_ROBOT[i], danno);
                 }
                 pthread_mutex_lock(&mtx_evento);
@@ -195,7 +186,6 @@ bool piazza_mina(StatoGioco *stato, int id, int x_prec, int y_prec) {
  * Strategie per tipo di robot
  * ───────────────────────────────────────────── */
 
-/* Direzioni possibili: su, giù, sinistra, destra */
 static int DX[] = {-1, 1,  0, 0};
 static int DY[] = { 0, 0, -1, 1};
 
@@ -205,7 +195,6 @@ static void avvicina(StatoGioco *stato, int id, int id_target) {
     Robot *t  = &stato->robot[id_target];
     int dx = (t->x > r->x) ? 1 : (t->x < r->x) ? -1 : 0;
     int dy = (t->y > r->y) ? 1 : (t->y < r->y) ? -1 : 0;
-    /* Prova prima movimento diagonale-componente, poi l'altro */
     if (dx != 0 && !muovi(stato, id, dx, 0)) muovi(stato, id, 0, dy);
     else if (dy != 0) muovi(stato, id, 0, dy);
 }
@@ -226,8 +215,7 @@ static void muovi_casuale(StatoGioco *stato, int id) {
 }
 
 /* Logica AGGRESSIVO: insegue e attacca sempre */
-static void comportamento_aggressivo(StatoGioco *stato, int id, void *sock) {
-    (void)sock; /* riservato per future chiamate pubblica_evento() */
+static void comportamento_aggressivo(StatoGioco *stato, int id) {
     if (attacca(stato, id)) return;
     int bersaglio = radar_prossimita(stato, id);
     if (bersaglio >= 0) avvicina(stato, id, bersaglio);
@@ -235,8 +223,7 @@ static void comportamento_aggressivo(StatoGioco *stato, int id, void *sock) {
 }
 
 /* Logica PRUDENTE: scappa se HP bassi, altrimenti cerca bonus o attacca */
-static void comportamento_prudente(StatoGioco *stato, int id, void *sock) {
-    (void)sock;
+static void comportamento_prudente(StatoGioco *stato, int id) {
     Robot *r = &stato->robot[id];
     int bersaglio = radar_prossimita(stato, id);
     if (r->hp < 40) {
@@ -250,8 +237,7 @@ static void comportamento_prudente(StatoGioco *stato, int id, void *sock) {
 }
 
 /* Logica CASUALE: azioni completamente random */
-static void comportamento_casuale(StatoGioco *stato, int id, void *sock) {
-    (void)sock;
+static void comportamento_casuale(StatoGioco *stato, int id) {
     int scelta = rand() % 4;
     switch (scelta) {
         case 0: muovi_casuale(stato, id); break;
@@ -262,26 +248,22 @@ static void comportamento_casuale(StatoGioco *stato, int id, void *sock) {
 }
 
 /* Logica DIFENSIVO: rimane in zona, attacca se qualcuno si avvicina, piazza mine */
-static void comportamento_difensivo(StatoGioco *stato, int id, void *sock) {
-    (void)sock;
+static void comportamento_difensivo(StatoGioco *stato, int id) {
     Robot *r = &stato->robot[id];
     int bersaglio = radar_prossimita(stato, id);
     if (bersaglio >= 0 && distanza(stato, id, bersaglio) <= 2) {
         if (!attacca(stato, id)) {
-            /* Piazza una mina nella cella corrente e spostati */
             int xp = r->x, yp = r->y;
-            if (muovi_casuale(stato, id), true) {
-                piazza_mina(stato, id, xp, yp);
-            }
+            muovi_casuale(stato, id);
+            piazza_mina(stato, id, xp, yp);
         }
     } else {
-        riposa(stato, id); /* Recupera HP quando è al sicuro */
+        riposa(stato, id);
     }
 }
 
 /* Logica KAMIKAZE: carica il nemico più vicino ignorando i danni */
-static void comportamento_kamikaze(StatoGioco *stato, int id, void *sock) {
-    (void)sock;
+static void comportamento_kamikaze(StatoGioco *stato, int id) {
     int bersaglio = radar_prossimita(stato, id);
     if (bersaglio >= 0) {
         avvicina(stato, id, bersaglio);
@@ -304,10 +286,6 @@ void *thread_robot(void *arg) {
     /* Seme random univoco per ogni robot */
     srand((unsigned)(id * 1234 + 5678));
 
-    /* Socket ZMQ: attualmente gli eventi vengono scritti direttamente
-     * nello stato condiviso (ultimo_evento). Una futura espansione
-     * può passare la socket PUB tramite ArgRobot e chiamare pubblica_evento(). */
-
     while (!stato->partita_finita && r->vivo) {
         /* Controlla se è rimasto un solo robot vivo */
         int vivi = 0, ultimo = -1;
@@ -324,11 +302,11 @@ void *thread_robot(void *arg) {
 
         /* Esegue il comportamento in base alla personalità */
         switch (r->tipo) {
-            case AGGRESSIVO: comportamento_aggressivo(stato, id, NULL); break;
-            case PRUDENTE:   comportamento_prudente  (stato, id, NULL); break;
-            case CASUALE:    comportamento_casuale   (stato, id, NULL); break;
-            case DIFENSIVO:  comportamento_difensivo (stato, id, NULL); break;
-            case KAMIKAZE:   comportamento_kamikaze  (stato, id, NULL); break;
+            case AGGRESSIVO: comportamento_aggressivo(stato, id); break;
+            case PRUDENTE:   comportamento_prudente  (stato, id); break;
+            case CASUALE:    comportamento_casuale   (stato, id); break;
+            case DIFENSIVO:  comportamento_difensivo (stato, id); break;
+            case KAMIKAZE:   comportamento_kamikaze  (stato, id); break;
         }
 
         /* Pausa dipendente dalla velocità del robot */

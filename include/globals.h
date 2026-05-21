@@ -71,13 +71,10 @@ extern sem_t sem_mappa;
 /* ───────────── Mutex per i messaggi evento ───────────── */
 extern pthread_mutex_t mtx_evento;
 
-/* ───────────── Endpoint ZeroMQ per gli eventi ───────────── */
-#define ZMQ_ENDPOINT "inproc://cobot_eventi"
-
 /* ───────────── Simboli robot ───────────── */
 static const char SIMBOLI_ROBOT[MAX_ROBOT] = {'A','P','C','D','K'};
 
 /* ───────────── Nomi robot ───────────── */
 extern const char *NOMI_ROBOT[MAX_ROBOT];
 
-#endif /* GLOBALS_H */
+#endif

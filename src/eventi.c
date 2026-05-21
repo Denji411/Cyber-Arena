@@ -7,21 +7,20 @@
  * power-up (energia, scudo) e muove gli ostacoli presenti sulla mappa.
  *
  * Tutti gli accessi alla mappa sono protetti da sem_mappa.
- * Gli eventi vengono pubblicati sulla socket ZMQ PUB.
+ * Gli eventi vengono scritti in stato->ultimo_evento (protetto da mtx_evento).
  */
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <zmq.h>
 
 #include "globals.h"
 #include "eventi.h"
 
 /* Intervallo tra spawn di power-up (microsecondi) */
-#define INTERVALLO_SPAWN   3000000  /* 3 secondi */
-#define INTERVALLO_OSTACOLO 5000000 /* 5 secondi */
+#define INTERVALLO_SPAWN    3000000  /* 3 secondi */
+#define INTERVALLO_OSTACOLO 5000000  /* 5 secondi */
 
 /* ─────────────────────────────────────────────
  * Funzioni helper
@@ -42,7 +41,7 @@ static bool cella_libera_casuale(StatoGioco *stato, int *out_r, int *out_c) {
     return false;
 }
 
-void spawna_powerup(StatoGioco *stato, void *zmq_socket) {
+void spawna_powerup(StatoGioco *stato) {
     sem_wait(&sem_mappa);
 
     int r, c;
@@ -64,15 +63,17 @@ void spawna_powerup(StatoGioco *stato, void *zmq_socket) {
 
     stato->mappa[r][c] = simbolo;
 
-    sem_post(&sem_mappa);
-
-    /* Pubblica evento */
+    /* Pubblica evento tramite stato condiviso */
     char msg[128];
-    snprintf(msg, sizeof(msg), "✨ Power-up [%s] apparso in (%d,%d)!", nome, r, c);
-    zmq_send(zmq_socket, msg, strlen(msg), ZMQ_NOBLOCK);
+    snprintf(msg, sizeof(msg), "Power-up [%s] apparso in (%d,%d)!", nome, r, c);
+    pthread_mutex_lock(&mtx_evento);
+    strncpy(stato->ultimo_evento, msg, sizeof(stato->ultimo_evento) - 1);
+    pthread_mutex_unlock(&mtx_evento);
+
+    sem_post(&sem_mappa);
 }
 
-void muovi_ostacolo(StatoGioco *stato, void *zmq_socket) {
+void muovi_ostacolo(StatoGioco *stato) {
     int dx[] = {-1, 1,  0, 0};
     int dy[] = { 0, 0, -1, 1};
 
@@ -101,11 +102,12 @@ void muovi_ostacolo(StatoGioco *stato, void *zmq_socket) {
     int r, c;
     if (cella_libera_casuale(stato, &r, &c)) {
         stato->mappa[r][c] = CELLA_OSTACOLO;
+
         char msg[64];
-        snprintf(msg, sizeof(msg), "🧱 Nuovo ostacolo apparso in (%d,%d)!", r, c);
-        sem_post(&sem_mappa);
-        zmq_send(zmq_socket, msg, strlen(msg), ZMQ_NOBLOCK);
-        return;
+        snprintf(msg, sizeof(msg), "Nuovo ostacolo apparso in (%d,%d)!", r, c);
+        pthread_mutex_lock(&mtx_evento);
+        strncpy(stato->ultimo_evento, msg, sizeof(stato->ultimo_evento) - 1);
+        pthread_mutex_unlock(&mtx_evento);
     }
 
     sem_post(&sem_mappa);
@@ -124,7 +126,6 @@ void pulisci_mine(StatoGioco *stato) {
 void *thread_eventi(void *arg) {
     ArgEventi  *args  = (ArgEventi *)arg;
     StatoGioco *stato = args->stato;
-    void       *sock  = args->zmq_socket;
 
     unsigned long elapsed = 0;
 
@@ -133,11 +134,11 @@ void *thread_eventi(void *arg) {
         elapsed += 500000;
 
         if (elapsed % INTERVALLO_SPAWN == 0) {
-            spawna_powerup(stato, sock);
+            spawna_powerup(stato);
         }
 
         if (elapsed % INTERVALLO_OSTACOLO == 0) {
-            muovi_ostacolo(stato, sock);
+            muovi_ostacolo(stato);
         }
 
         pulisci_mine(stato);

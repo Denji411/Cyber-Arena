@@ -6,7 +6,6 @@
 /* Argomenti per il thread grafico */
 typedef struct {
     StatoGioco *stato;
-    void       *zmq_socket; /* socket SUB per ricevere eventi */
 } ArgGrafica;
 
 /* ───────────── Thread grafico ───────────── */
@@ -29,4 +28,4 @@ void init_colori(void);
 /* Restituisce il color pair in base agli HP (verde > 60, giallo > 30, rosso altrimenti) */
 int colore_hp(int hp);
 
-#endif /* GRAFICA_H */
+#endif

@@ -27,7 +27,6 @@
 #include <pthread.h>
 #include <semaphore.h>
 #include <ncurses.h>
-#include <zmq.h>
 
 #include "globals.h"
 #include "robot.h"
@@ -149,18 +148,6 @@ static void avvia_partita(void) {
     init_mappa(stato);
     init_robot(stato);
 
-    /* ── Crea il context ZeroMQ ── */
-    void *zmq_ctx = zmq_ctx_new();
-
-    /* Socket PUB condivisa (robot + thread eventi → thread grafico) */
-    void *sock_pub = zmq_socket(zmq_ctx, ZMQ_PUB);
-    zmq_bind(sock_pub, ZMQ_ENDPOINT);
-
-    /* Socket SUB per il thread grafico */
-    void *sock_sub = zmq_socket(zmq_ctx, ZMQ_SUB);
-    zmq_connect(sock_sub, ZMQ_ENDPOINT);
-    zmq_setsockopt(sock_sub, ZMQ_SUBSCRIBE, "", 0); /* iscrive a tutti i topic */
-
     /* ── Prepara argomenti thread ── */
 
     /* Thread robot */
@@ -173,12 +160,10 @@ static void avvia_partita(void) {
     /* Thread grafico */
     ArgGrafica args_grafica;
     args_grafica.stato      = stato;
-    args_grafica.zmq_socket = sock_sub;
 
     /* Thread eventi */
     ArgEventi args_eventi;
     args_eventi.stato      = stato;
-    args_eventi.zmq_socket = sock_pub;
 
     /* ── Lancia i thread secondari ── */
     pthread_t t_robot[MAX_ROBOT];
@@ -211,10 +196,6 @@ static void avvia_partita(void) {
     /* Ripristina getch() bloccante per il menu */
     nodelay(stdscr, FALSE);
 
-    /* ── Cleanup ── */
-    zmq_close(sock_pub);
-    zmq_close(sock_sub);
-    zmq_ctx_destroy(zmq_ctx);
     sem_destroy(&sem_mappa);
     free(stato);
 }
@@ -229,13 +210,13 @@ static void schermata_comandi(void) {
     mvprintw(5,  cx - 8, "--- COMANDI ---");
     attroff(A_BOLD);
     mvprintw(8,  4, "La simulazione è completamente automatica:");
-    mvprintw(10, 4, "• %d robot combattono in simultanea su thread separati.", MAX_ROBOT);
-    mvprintw(11, 4, "• Ogni robot ha una personalità diversa (Aggressivo, Prudente,");
+    mvprintw(10, 4, "- %d robot combattono in simultanea su thread separati.", MAX_ROBOT);
+    mvprintw(11, 4, "- Ogni robot ha una personalità diversa (Aggressivo, Prudente,");
     mvprintw(12, 4, "  Casuale, Difensivo, Kamikaze).");
-    mvprintw(13, 4, "• Power-up (+ energia, S scudo) compaiono casualmente.");
-    mvprintw(14, 4, "• Le mine (M) esplodono al contatto.");
-    mvprintw(15, 4, "• Gli accessi alla mappa sono protetti da un semaforo.");
-    mvprintw(16, 4, "• Gli eventi vengono trasmessi via ZeroMQ PUB/SUB.");
+    mvprintw(13, 4, "- Power-up (+ energia, S scudo) compaiono casualmente.");
+    mvprintw(14, 4, "- Le mine (M) esplodono al contatto.");
+    mvprintw(15, 4, "- Gli accessi alla mappa sono protetti da un semaforo.");
+    mvprintw(16, 4, "- Gli eventi vengono trasmessi via ZeroMQ PUB/SUB.");
     mvprintw(19, cx - 18, "Premi un tasto qualsiasi per tornare al menu.");
     refresh();
     getch();
@@ -252,10 +233,9 @@ static void schermata_crediti(void) {
     mvprintw(10, cx - 17, "Progetto TPSIT 4a superiore");
     mvprintw(12, cx - 17, "Andrea Mazzoli  &  Daniele Matranga");
     mvprintw(15, cx - 17, "Tecnologie usate:");
-    mvprintw(16, cx - 13, "• POSIX Threads (pthread)");
-    mvprintw(17, cx - 13, "• Semafori POSIX (sem_t)");
-    mvprintw(18, cx - 13, "• ZeroMQ inproc PUB/SUB");
-    mvprintw(19, cx - 13, "• ncurses");
+    mvprintw(16, cx - 13, "- POSIX Threads (pthread)");
+    mvprintw(17, cx - 13, "- Semafori POSIX (sem_t)");
+    mvprintw(19, cx - 13, "- ncurses");
     mvprintw(22, cx - 18, "Premi un tasto qualsiasi per tornare al menu.");
     refresh();
     getch();
@@ -290,7 +270,7 @@ static int menu_principale(void) {
             if (i == sel) attroff(A_REVERSE | A_BOLD);
         }
 
-        mvprintw(rows - 2, (cols - 34) / 2, "Usa ↑↓ per navigare, INVIO per selezionare");
+        mvprintw(rows - 2, (cols - 34) / 2, "Usa KEY_UP/KEY_DOWN per navigare, INVIO per selezionare");
         refresh();
 
         int k = getch();
