@@ -113,12 +113,6 @@ void muovi_ostacolo(StatoGioco *stato) {
     sem_post(&sem_mappa);
 }
 
-void pulisci_mine(StatoGioco *stato) {
-    /* Le mine vengono già rimosse in muovi() quando esplodono.
-     * Questa funzione è un hook per future espansioni (mine a tempo). */
-    (void)stato;
-}
-
 /* ─────────────────────────────────────────────
  * Thread eventi speciali
  * ───────────────────────────────────────────── */
@@ -140,8 +134,6 @@ void *thread_eventi(void *arg) {
         if (elapsed % INTERVALLO_OSTACOLO == 0) {
             muovi_ostacolo(stato);
         }
-
-        pulisci_mine(stato);
     }
 
     pthread_exit(NULL);

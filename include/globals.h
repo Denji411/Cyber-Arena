@@ -25,7 +25,7 @@
 #define BONUS_ENERGIA   25
 #define DANNO_MINA      40
 #define DURATA_SCUDO    5      /* turni di protezione */
-#define RAGGIO_RADAR    6      /* distanza massima rilevamento nemici */
+#define RAGGIO_RADAR    15      /* distanza massima rilevamento nemici */
 
 /* ───────────── Tipi di robot (personalità) ───────────── */
 typedef enum {

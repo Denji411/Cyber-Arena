@@ -299,9 +299,13 @@ int main(void) {
     curs_set(0);
     init_colori();
 
-    int gioca = menu_principale();
-    if (gioca) {
-        avvia_partita();
+    while(1){
+        int gioca = menu_principale();
+        if (gioca) {
+            avvia_partita();
+        } else {
+            break;
+        }
     }
 
     endwin();
