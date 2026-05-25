@@ -18,15 +18,9 @@
 #include "globals.h"
 #include "eventi.h"
 
-/* Intervallo tra spawn di power-up (microsecondi) */
-#define INTERVALLO_SPAWN    3000000  /* 3 secondi */
-#define INTERVALLO_OSTACOLO 5000000  /* 5 secondi */
+#define INTERVALLO_SPAWN    3000000
+#define INTERVALLO_OSTACOLO 5000000
 
-/* ─────────────────────────────────────────────
- * Funzioni helper
- * ───────────────────────────────────────────── */
-
-/* Trova una cella libera casuale nella mappa; restituisce false se non trovata */
 static bool cella_libera_casuale(StatoGioco *stato, int *out_r, int *out_c) {
     int tentativi = 50;
     while (tentativi-- > 0) {
@@ -50,7 +44,6 @@ void spawna_powerup(StatoGioco *stato) {
         return;
     }
 
-    /* Sceglie casualmente energia o scudo (70% / 30%) */
     char simbolo;
     const char *nome;
     if (rand() % 10 < 7) {
@@ -63,7 +56,6 @@ void spawna_powerup(StatoGioco *stato) {
 
     stato->mappa[r][c] = simbolo;
 
-    /* Pubblica evento tramite stato condiviso */
     char msg[128];
     snprintf(msg, sizeof(msg), "Power-up [%s] apparso in (%d,%d)!", nome, r, c);
     pthread_mutex_lock(&mtx_evento);
@@ -79,11 +71,9 @@ void muovi_ostacolo(StatoGioco *stato) {
 
     sem_wait(&sem_mappa);
 
-    /* Cerca un ostacolo esistente */
     for (int r = 1; r < RIGHE - 1; r++) {
         for (int c = 1; c < COLONNE - 1; c++) {
             if (stato->mappa[r][c] == CELLA_OSTACOLO) {
-                /* Prova a spostarlo in una direzione casuale */
                 int dir = rand() % 4;
                 int nr = r + dx[dir];
                 int nc = c + dy[dir];
@@ -98,7 +88,6 @@ void muovi_ostacolo(StatoGioco *stato) {
         }
     }
 
-    /* Nessun ostacolo trovato: piazza uno nuovo */
     int r, c;
     if (cella_libera_casuale(stato, &r, &c)) {
         stato->mappa[r][c] = CELLA_OSTACOLO;
@@ -113,10 +102,6 @@ void muovi_ostacolo(StatoGioco *stato) {
     sem_post(&sem_mappa);
 }
 
-/* ─────────────────────────────────────────────
- * Thread eventi speciali
- * ───────────────────────────────────────────── */
-
 void *thread_eventi(void *arg) {
     ArgEventi  *args  = (ArgEventi *)arg;
     StatoGioco *stato = args->stato;
@@ -124,7 +109,7 @@ void *thread_eventi(void *arg) {
     unsigned long elapsed = 0;
 
     while (!stato->partita_finita) {
-        usleep(500000); /* controlla ogni 0.5 secondi */
+        usleep(500000);
         elapsed += 500000;
 
         if (elapsed % INTERVALLO_SPAWN == 0) {

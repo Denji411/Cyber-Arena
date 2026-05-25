@@ -18,16 +18,14 @@
 #define CELLA_SCUDO     'S'
 #define CELLA_OSTACOLO  'O'
 
-/* ───────────── Costanti di gioco ───────────── */
 #define HP_INIZIALE     100
 #define DANNO_ATTACCO   15
 #define RECUPERO_RIPOSO 10
 #define BONUS_ENERGIA   25
 #define DANNO_MINA      40
-#define DURATA_SCUDO    5      /* turni di protezione */
-#define RAGGIO_RADAR    15      /* distanza massima rilevamento nemici */
+#define DURATA_SCUDO    5
+#define RAGGIO_RADAR    15
 
-/* ───────────── Tipi di robot (personalità) ───────────── */
 typedef enum {
     AGGRESSIVO = 0,
     PRUDENTE,
@@ -36,45 +34,38 @@ typedef enum {
     KAMIKAZE
 } TipoRobot;
 
-/* ───────────── Stato di un singolo robot ───────────── */
 typedef struct {
-    int  x;            /* riga nella mappa */
-    int  y;            /* colonna nella mappa */
+    int  x;
+    int  y;
     int  hp;
-    int  scudo;        /* turni di scudo rimasti */
+    int  scudo;
     bool vivo;
     char simbolo;
     TipoRobot tipo;
-    int  velocita;     /* microsecondi tra un'azione e l'altra */
+    int  velocita;
     int  mine_piazzate;
 } Robot;
 
-/* ───────────── Stato globale condiviso ───────────── */
 typedef struct {
     Robot    robot[MAX_ROBOT];
     char     mappa[RIGHE][COLONNE];
     int      num_robot;
     bool     partita_finita;
-    int      vincitore;           /* indice del robot vincitore, -1 se ancora in corso */
-    char     ultimo_evento[128];  /* messaggio da mostrare nell'interfaccia */
+    int      vincitore;
+    char     ultimo_evento[128];
 } StatoGioco;
 
-/* ───────────── Argomenti per il thread robot ───────────── */
 typedef struct {
     StatoGioco *stato;
-    int         id;               /* indice nel vettore robot[] */
+    int         id;
 } ArgRobot;
 
-/* ───────────── Semaforo globale per la mappa ───────────── */
 extern sem_t sem_mappa;
 
-/* ───────────── Mutex per i messaggi evento ───────────── */
 extern pthread_mutex_t mtx_evento;
 
-/* ───────────── Simboli robot ───────────── */
 static const char SIMBOLI_ROBOT[MAX_ROBOT] = {'A','P','C','D','K'};
 
-/* ───────────── Nomi robot ───────────── */
 extern const char *NOMI_ROBOT[MAX_ROBOT];
 
 #endif

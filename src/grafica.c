@@ -1,22 +1,4 @@
-/* Necessario per usleep() con -std=c11 */
 #define _XOPEN_SOURCE 600
-
-/*
- * grafica.c
- * Thread grafico: aggiorna la schermata ncurses 10 volte al secondo.
- *
- * Legge stato->ultimo_evento (protetto da mtx_evento) per mostrare
- * i messaggi degli altri thread (robot, eventi speciali).
- *
- * Layout del terminale:
- *   ┌──────────────────────────────────────────────────┐ ┌───────────────┐
- *   │                    MAPPA 20x50                   │ │  CLASSIFICA   │
- *   │                                                  │ │  A: ████ 100  │
- *   │                                                  │ │  P: ██   45   │
- *   │                                                  │ │  ...          │
- *   └──────────────────────────────────────────────────┘ └───────────────┘
- *   [ EVENTO: Aggressore ha distrutto Prudente!                           ]
- */
 
 #include <ncurses.h>
 #include <string.h>
@@ -25,24 +7,21 @@
 #include "globals.h"
 #include "grafica.h"
 
-/* ─── Color pair ID ─── */
-#define CP_BORDO       1   /* bianco su nero */
-#define CP_HP_OK       2   /* verde */
-#define CP_HP_MED      3   /* giallo */
-#define CP_HP_LOW      4   /* rosso */
-#define CP_EVENTO      5   /* ciano */
-#define CP_ROBOT_A     6   /* magenta – Aggressivo */
-#define CP_ROBOT_P     7   /* blu     – Prudente   */
-#define CP_ROBOT_C     8   /* giallo  – Casuale    */
-#define CP_ROBOT_D     9   /* verde   – Difensivo  */
-#define CP_ROBOT_K    10   /* rosso   – Kamikaze   */
-#define CP_MINA       11   /* rosso brillante */
-#define CP_POWERUP    12   /* verde brillante */
-#define CP_SCUDO      13   /* ciano brillante */
+#define CP_BORDO       1
+#define CP_HP_OK       2
+#define CP_HP_MED      3
+#define CP_HP_LOW      4
+#define CP_EVENTO      5
+#define CP_ROBOT_A     6
+#define CP_ROBOT_P     7
+#define CP_ROBOT_C     8
+#define CP_ROBOT_D     9
+#define CP_ROBOT_K    10
+#define CP_MINA       11
+#define CP_POWERUP    12
+#define CP_SCUDO      13
 
-/* Colonne dove inizia la classifica (a destra della mappa) */
 #define COL_CLASS (COLONNE + 3)
-/* Riga dell'evento (sotto la mappa) */
 #define RIGA_EVENTO (RIGHE + 1)
 
 void init_colori(void) {
@@ -69,7 +48,6 @@ int colore_hp(int hp) {
     return CP_HP_LOW;
 }
 
-/* Restituisce il color pair associato al simbolo del robot */
 static int colore_robot(char simbolo) {
     switch (simbolo) {
         case 'A': return CP_ROBOT_A;
@@ -119,9 +97,9 @@ void disegna_classifica(StatoGioco *stato) {
     int col = COL_CLASS;
 
     attron(COLOR_PAIR(CP_BORDO) | A_BOLD);
-    mvprintw(0, col, ".______________.");
-    mvprintw(1, col, "|  CLASSIFICA  |");
-    mvprintw(2, col, "|______________|");
+    mvprintw(0, col, ".___________________.");
+    mvprintw(1, col, "|    CLASSIFICA     |");
+    mvprintw(2, col, "|___________________|");
     attroff(COLOR_PAIR(CP_BORDO) | A_BOLD);
 
     sem_wait(&sem_mappa);
@@ -131,7 +109,7 @@ void disegna_classifica(StatoGioco *stato) {
 
         int cp_robot = colore_robot(r->simbolo);
         attron(COLOR_PAIR(cp_robot) | A_BOLD);
-        mvprintw(riga, col, "| %c %-10s |", r->simbolo,
+        mvprintw(riga, col, "| %c %-15s |", r->simbolo,
                  r->vivo ? NOMI_ROBOT[i] : "DISTRUTTO ");
         attroff(COLOR_PAIR(cp_robot) | A_BOLD);
 
@@ -147,20 +125,20 @@ void disegna_classifica(StatoGioco *stato) {
 
             if (r->scudo > 0) {
                 attron(COLOR_PAIR(CP_SCUDO));
-                mvprintw(riga + 2, col, "|  [SCUDO x%d]   |", r->scudo);
+                mvprintw(riga + 2, col, "|     [SCUDO x%d]    |", r->scudo);
                 attroff(COLOR_PAIR(CP_SCUDO));
             } else {
-                mvprintw(riga + 2, col, "|______________|");
+                mvprintw(riga + 2, col, "|___________________|");
             }
         } else {
-            mvprintw(riga + 1, col, "|              |");
-            mvprintw(riga + 2, col, "|______________|");
+            mvprintw(riga + 1, col, "|                   |");
+            mvprintw(riga + 2, col, "|___________________|");
         }
     }
     sem_post(&sem_mappa);
 
     int riga_fine = 3 + stato->num_robot * 3;
-    mvprintw(riga_fine, col, "|______________|");
+    mvprintw(riga_fine, col, "|___________________|");
 }
 
 void disegna_eventi(const char *messaggio) {
@@ -173,16 +151,11 @@ void disegna_eventi(const char *messaggio) {
     pthread_mutex_unlock(&mtx_evento);
 }
 
-/* ─────────────────────────────────────────────
- * Thread grafico
- * ───────────────────────────────────────────── */
-
  void *thread_grafico(void *arg) {
     ArgGrafica *args  = (ArgGrafica *)arg;
     StatoGioco *stato = args->stato;
 
     while (!stato->partita_finita) {
-        /* Permette uscita anticipata con il tasto 'q' */
         int tasto = getch();
         if (tasto == 'q' || tasto == 'Q') {
             stato->partita_finita = true;
@@ -190,21 +163,20 @@ void disegna_eventi(const char *messaggio) {
             break;
         }
 
-        /* Ridisegna */
         erase();
         disegna_mappa(stato);
         disegna_classifica(stato);
+        mvprintw(RIGHE + 3, 0, "----------------");
+        mvprintw(RIGHE + 4, 1, "[Q] per uscire");
+        mvprintw(RIGHE + 5, 0, "----------------");
 
-        /* Chiamata pulita: il mutex viene preso direttamente dentro la funzione */
         disegna_eventi(stato->ultimo_evento);
 
         refresh();
 
-        /* ~10 aggiornamenti al secondo */
         usleep(100000);
     }
 
-    /* Schermata finale */
     erase();
     disegna_mappa(stato);
     disegna_classifica(stato);
