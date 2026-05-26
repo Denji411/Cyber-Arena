@@ -166,7 +166,7 @@ static void schermata_crediti(void) {
     mvprintw(5, cx - 7, "--- CREDITI ---");
     attroff(A_BOLD | COLOR_PAIR(2));
     mvprintw(8,  cx - 4, "CobotRop");
-    mvprintw(10, cx - 17, "Andrea Mazzoli  &  Daniele Matranga");
+    mvprintw(10, cx - 22, "Andrea Mazzoli, Daniele Matranga & Saad Zahir");
     mvprintw(13, cx - 17, "Tecnologie usate:");
     mvprintw(14, cx - 13, "- POSIX Threads (pthread)");
     mvprintw(15, cx - 13, "- Semafori POSIX (sem_t)");
